@@ -8,14 +8,14 @@ import {
   Mail,
   ExternalLink,
   Code,
-  Coffee,
+  Gamepad,
   Zap,
 } from "lucide-react";
 
 const About = () => {
   const interests = [
     { icon: Code, label: "Clean Code", color: "text-neon" },
-    { icon: Coffee, label: "Coffee Lover", color: "text-primary" },
+    { icon: Gamepad, label: "Gaming", color: "text-primary" },
     { icon: Zap, label: "Innovation", color: "text-warning" },
   ];
 

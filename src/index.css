@@ -2,26 +2,26 @@
 @tailwind components;
 @tailwind utilities;
 
-/* 3D Portfolio Design System - Dark Purple Theme */
+/* 3D Portfolio Design System - Dark Blue Theme */
 
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
 @layer base {
   :root {
 
-    /* Core Dark Theme - Red & Matte Black */
+    /* Core Dark Theme - Blue & Matte Black */
     --background: 0 0% 5%;
     --foreground: 0 0% 96%;
 
-    /* Red Brand Colors */
-    --primary: 356 85% 52%;
+    /* Blue Brand Colors */
+    --primary: 210 90% 55%;
     --primary-foreground: 0 0% 5%;
-    --primary-glow: 356 92% 60%;
+    --primary-glow: 210 95% 65%;
     
-    /* Neon Accents (Red) */
-    --neon: 356 92% 60%;
-    --neon-bright: 356 100% 70%;
-    --neon-dim: 356 70% 40%;
+    /* Neon Accents (Blue) */
+    --neon: 210 95% 65%;
+    --neon-bright: 210 100% 75%;
+    --neon-dim: 210 70% 45%;
 
     /* Surface Colors (Matte Black scale) */
     --surface-1: 0 0% 7%;
@@ -32,13 +32,13 @@
     --border: 0 0% 18%;
 
     /* Gradients */
-    --gradient-primary: linear-gradient(135deg, hsl(356 85% 55%), hsl(350 80% 45%));
+    --gradient-primary: linear-gradient(135deg, hsl(210 85% 55%), hsl(210 70% 45%));
     --gradient-dark: linear-gradient(135deg, hsl(0 0% 5%), hsl(0 0% 10%));
-    --gradient-glow: radial-gradient(circle at center, hsl(356 92% 60% / 0.18), transparent 70%);
+    --gradient-glow: radial-gradient(circle at center, hsl(210 95% 65% / 0.18), transparent 70%);
 
     /* Shadows */
-    --shadow-glow: 0 0 30px hsl(356 92% 60% / 0.28);
-    --shadow-neon: 0 0 20px hsl(356 92% 60% / 0.50), 0 0 40px hsl(356 92% 60% / 0.30);
+    --shadow-glow: 0 0 30px hsl(210 95% 65% / 0.28);
+    --shadow-neon: 0 0 20px hsl(210 95% 65% / 0.50), 0 0 40px hsl(210 95% 65% / 0.30);
     --shadow-card: 0 10px 30px hsl(0 0% 2% / 0.55);
     --shadow-elevated: 0 20px 40px hsl(0 0% 2% / 0.75);
 
@@ -50,10 +50,9 @@
     --glass: 0 0% 9% / 0.65;
     --card: 0 0% 9%;
     
-    /* --glass-border: 356 85% 52%; */
+    /* --glass-border: 210 90% 55%; */
   }
 }
-
 @layer base {
   * {
     @apply border-border;
