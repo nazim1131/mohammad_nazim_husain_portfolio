@@ -24,40 +24,38 @@ const toComma = (v: any): string => toArray(v).join(", ");
 const CATEGORY_OPTIONS = [
   { id: "fullstack", label: "Full Stack" },
   { id: "frontend", label: "Frontend" },
-  { id: "mobile", label: "Mobile" },
-  { id: "blockchain", label: "Blockchain" },
-  { id: "iot", label: "IoT" },
+  { id: "design", label: "Design" },
+  { id: "ai", label: "AI & ML" },
+  { id: "dataanalysis", label: "Data Analysis" },
 ];
 
 // ======= Skills: canonical keys/labels =======
-type SkillCatKey = "frontend" | "backend" | "devops" | "mobile" | "design" | "other";
+type SkillCatKey = "frontend" | "backend" | "design" | "ai" | "dataanalysis" | "tools";
 
 const SKILL_CAT_LABELS: Record<SkillCatKey, string> = {
   frontend: "Frontend",
   backend: "Backend",
-  devops: "DevOps / AI-ML",
-  mobile: "Mobile",
+  ai: "AI-ML",
   design: "Design",
-  other: "Other",
+  tools: "tools",
 };
 
 // normalize anything to canonical key (DB me yahi keys save hongi)
 const toSkillCatKey = (v: any): SkillCatKey => {
   const s = String(v || "").toLowerCase().trim();
 
-  // exact canonical
-  if (["frontend", "backend", "devops", "mobile", "design", "other"].includes(s)) {
+  if (["frontend", "backend", "ai", "dataanalysis", "design", "tools"].includes(s)) {
     return s as SkillCatKey;
   }
 
   // synonyms → canonical
   if (s.includes("front")) return "frontend";
   if (s.includes("back")) return "backend";
-  if (s.includes("devops") || s.includes("cloud") || s.includes("ai") || s.includes("ml")) return "devops";
-  if (s.includes("mobile")) return "mobile";
+  if (s.includes("ai") || s.includes("cloud") || s.includes("ai") || s.includes("ml")) return "ai";
+  if (s.includes("dataanalysis")) return "dataanalysis";
   if (s.includes("design") || s.includes("ux") || s.includes("ui")) return "design";
 
-  return "other";
+  return "tools";
 };
 
 const Admin = () => {
