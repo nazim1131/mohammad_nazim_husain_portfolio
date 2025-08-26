@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase';
+import { supabase } from "@/lib/supabase";
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { Card } from "@/components/ui/card";
@@ -11,54 +11,105 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Edit, Trash2, Save, Eye, EyeOff, Lock, Database, Settings, BarChart3 } from "lucide-react";
+import {
+  Plus,
+  Edit,
+  Trash2,
+  Save,
+  Eye,
+  EyeOff,
+  Lock,
+  Database,
+  Settings,
+  BarChart3,
+} from "lucide-react";
 
-// ---------------- helpers ----------------
+// ----------------- helpers (generic) -----------------
 const toArray = (v: any): string[] =>
   Array.isArray(v)
-    ? v.filter(Boolean).map(String).map(s => s.trim())
+    ? v.filter(Boolean).map(String).map((s) => s.trim())
     : typeof v === "string"
-      ? v.split(",").map(s => s.trim()).filter(Boolean)
-      : [];
+    ? v.split(",").map((s) => s.trim()).filter(Boolean)
+    : [];
 
 const toComma = (v: any): string => toArray(v).join(", ");
 
-// Projects: keep these ids consistent everywhere (Admin + Projects page filters)
-const CATEGORY_OPTIONS = [
-  { id: "fullstack",    label: "Full Stack" },
-  { id: "frontend",     label: "Frontend" },
-  { id: "design",       label: "Design" },
-  { id: "ai",           label: "AI & ML" },
+// ----------------- PROJECTS: canonical categories -----------------
+type ProjCatKey = "fullstack" | "frontend" | "design" | "ai" | "dataanalysis";
+
+const PROJ_CAT_LABELS: Record<ProjCatKey, string> = {
+  fullstack: "Full Stack",
+  frontend: "Frontend",
+  design: "Design",
+  ai: "AI & ML",
+  dataanalysis: "Data Analysis",
+};
+
+const PROJECT_CATEGORY_OPTIONS: { id: ProjCatKey; label: string }[] = [
+  { id: "fullstack", label: "Full Stack" },
+  { id: "frontend", label: "Frontend" },
+  { id: "design", label: "Design" },
+  { id: "ai", label: "AI & ML" },
   { id: "dataanalysis", label: "Data Analysis" },
 ];
 
-// ======= Skills: canonical keys/labels =======
+// normalize any incoming/free-text to canonical project key
+const toProjectCatKey = (raw: any): ProjCatKey => {
+  const s = String(raw ?? "").toLowerCase().trim();
+  if (s === "fullstack") return "fullstack";
+  if (s === "frontend") return "frontend";
+  if (s === "design") return "design";
+  if (s === "ai") return "ai";
+  if (s === "dataanalysis") return "dataanalysis";
+
+  // legacy/common variants
+  if (s.includes("full")) return "fullstack";
+  if (s.includes("front")) return "frontend";
+  if (s.includes("design")) return "design";
+  if (s.includes("ai & ml") || s.includes("ai/ml") || s.includes("ai-ml") || s === "ai" || s.includes("ml"))
+    return "ai";
+  if (s.includes("data analysis") || s.includes("data-analysis") || s === "data" || s.includes("analytics"))
+    return "dataanalysis";
+
+  // fallback (choose one bucket)
+  return "fullstack";
+};
+
+// ----------------- SKILLS: canonical categories -----------------
 type SkillCatKey = "frontend" | "backend" | "design" | "ai" | "dataanalysis" | "tools";
 
 const SKILL_CAT_LABELS: Record<SkillCatKey, string> = {
-  frontend:     "Frontend",
-  backend:      "Backend",
-  ai:           "AI & ML",
+  frontend: "Frontend",
+  backend: "Backend",
+  design: "Design",
+  ai: "AI & ML",
   dataanalysis: "Data Analysis",
-  design:       "Design",
-  tools:        "Tools",
+  tools: "Tools",
 };
 
-// Normalize anything to canonical key (DB me yahi keys save hongi)
+const SKILL_CATEGORY_OPTIONS: { id: SkillCatKey; label: string }[] = [
+  { id: "frontend", label: "Frontend" },
+  { id: "backend", label: "Backend" },
+  { id: "design", label: "Design" },
+  { id: "ai", label: "AI & ML" },
+  { id: "dataanalysis", label: "Data Analysis" },
+  { id: "tools", label: "Tools" },
+];
+
+// normalize any incoming/free-text to canonical skill key
 const toSkillCatKey = (v: any): SkillCatKey => {
   const s = String(v || "").toLowerCase().trim();
 
-  // exact canonical
-  if (["frontend","backend","ai","dataanalysis","design","tools"].includes(s)) {
+  if (["frontend", "backend", "design", "ai", "dataanalysis", "tools"].includes(s)) {
     return s as SkillCatKey;
   }
-
-  // synonyms → canonical
   if (s.includes("front")) return "frontend";
-  if (s.includes("back"))  return "backend";
-  if (s.includes("ai") || s.includes("ml")) return "ai";
-  if (s.includes("data analysis") || s.includes("data-") || s === "data" || s.includes("analytics")) return "dataanalysis";
+  if (s.includes("back")) return "backend";
   if (s.includes("design") || s.includes("ux") || s.includes("ui")) return "design";
+  if (s.includes("ai & ml") || s.includes("ai/ml") || s.includes("ai-ml") || s.includes("ml") || s === "ai")
+    return "ai";
+  if (s.includes("data analysis") || s.includes("data-analysis") || s.includes("analytics") || s === "data")
+    return "dataanalysis";
 
   return "tools";
 };
@@ -79,34 +130,48 @@ const Admin = () => {
   async function fetchAll() {
     try {
       const { data: proj, error: pErr } = await supabase
-        .from('projects')
-        .select('*')
-        .order('order_index', { ascending: true });
+        .from("projects")
+        .select("*")
+        .order("order_index", { ascending: true });
       if (pErr) throw pErr;
-      setProjects(proj || []);
+      setProjects(
+        (proj || []).map((p) => ({
+          ...p,
+          // normalize on read so list/edit is always consistent
+          category: toProjectCatKey(p?.category),
+        }))
+      );
 
       const { data: sk, error: sErr } = await supabase
-        .from('skills')
-        .select('*')
-        .order('level', { ascending: false });
+        .from("skills")
+        .select("*")
+        .order("level", { ascending: false });
       if (sErr) throw sErr;
-      setSkills(sk || []);
+      setSkills(
+        (sk || []).map((s) => ({
+          ...s,
+          category: toSkillCatKey(s?.category),
+        }))
+      );
     } catch (err: any) {
       toast({
         title: "Load failed",
         description: err?.message || "Unable to fetch data",
-        variant: "destructive"
+        variant: "destructive",
       });
     }
   }
 
-  // -------- auth --------
+  // ----------------- auth -----------------
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     const { error } = await supabase.auth.signInWithPassword(loginData);
-    if (error) {
-      return toast({ title: "Login failed", description: error.message, variant: "destructive" });
-    }
+    if (error)
+      return toast({
+        title: "Login failed",
+        description: error.message,
+        variant: "destructive",
+      });
     setIsAuthenticated(true);
     fetchAll();
     toast({ title: "Login Successful", description: "Welcome to the admin dashboard!" });
@@ -118,7 +183,7 @@ const Admin = () => {
     toast({ title: "Logged Out", description: "You have been successfully logged out." });
   };
 
-  // -------- projects --------
+  // ----------------- projects -----------------
   const handleSaveProject = async () => {
     try {
       const p = editingProject || {};
@@ -126,7 +191,7 @@ const Admin = () => {
         return toast({
           title: "Validation Error",
           description: "Title & Description required.",
-          variant: "destructive"
+          variant: "destructive",
         });
       }
 
@@ -139,9 +204,13 @@ const Admin = () => {
         highlights: toArray(p.highlights),
         status: p.status || "draft",
         order_index:
-          typeof p.order_index === "number" ? p.order_index :
-          typeof p.sortOrder === "number" ? p.sortOrder : 0,
-        category: p.category || "fullstack", // must match CATEGORY_OPTIONS ids
+          typeof p.order_index === "number"
+            ? p.order_index
+            : typeof p.sortOrder === "number"
+            ? p.sortOrder
+            : 0,
+        // 🔴 always save canonical project key
+        category: toProjectCatKey(p.category || "fullstack"),
         date: p.date || null,
         github: p.github || null,
         live: p.live || null,
@@ -150,73 +219,102 @@ const Admin = () => {
       };
 
       if (p.id) {
-        const { error } = await supabase.from('projects').update(payload).eq('id', p.id);
+        const { error } = await supabase.from("projects").update(payload).eq("id", p.id);
         if (error) throw error;
         toast({ title: "Project Updated", description: "Saved successfully." });
       } else {
-        const { data:{ user } } = await supabase.auth.getUser();
-        const { error } = await supabase.from('projects').insert({ ...payload, owner_id: user?.id });
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        const { error } = await supabase.from("projects").insert({ ...payload, owner_id: user?.id });
         if (error) throw error;
         toast({ title: "Project Created", description: "New project added." });
       }
       setEditingProject(null);
       await fetchAll();
-    } catch (err:any) {
-      toast({ title: "Save failed", description: err?.message || "Unexpected error", variant: "destructive" });
+    } catch (err: any) {
+      toast({
+        title: "Save failed",
+        description: err?.message || "Unexpected error",
+        variant: "destructive",
+      });
     }
   };
 
-  const handleDeleteProject = async (id: string|number) => {
+  const handleDeleteProject = async (id: string | number) => {
     try {
-      const { error } = await supabase.from('projects').delete().eq('id', id);
-    if (error) throw error;
+      const { error } = await supabase.from("projects").delete().eq("id", id);
+      if (error) throw error;
       toast({ title: "Project Deleted", description: "Removed successfully." });
       await fetchAll();
-    } catch (err:any) {
-      toast({ title: "Delete failed", description: err?.message || "Unexpected error", variant: "destructive" });
+    } catch (err: any) {
+      toast({
+        title: "Delete failed",
+        description: err?.message || "Unexpected error",
+        variant: "destructive",
+      });
     }
   };
 
-  // -------- skills --------
+  // ----------------- skills -----------------
   const handleSaveSkill = async () => {
     try {
       if (!editingSkill?.name) {
-        return toast({ title: "Validation Error", description: "Skill name required.", variant: "destructive" });
+        return toast({
+          title: "Validation Error",
+          description: "Skill name required.",
+          variant: "destructive",
+        });
       }
       const payload = {
         name: editingSkill.name,
         description: editingSkill.description || null,
-        level: typeof editingSkill.level === "number" ? editingSkill.level : Number(editingSkill.level || 0),
-        category: toSkillCatKey(editingSkill.category), // save canonical key
+        level:
+          typeof editingSkill.level === "number"
+            ? editingSkill.level
+            : Number(editingSkill.level || 0),
+        // 🔴 always save canonical skill key
+        category: toSkillCatKey(editingSkill.category),
       };
       if (editingSkill.id) {
-        const { error } = await supabase.from('skills').update(payload).eq('id', editingSkill.id);
+        const { error } = await supabase.from("skills").update(payload).eq("id", editingSkill.id);
         if (error) throw error;
         toast({ title: "Skill Updated", description: "Saved successfully." });
       } else {
-        const { data:{ user } } = await supabase.auth.getUser();
-        const { error } = await supabase.from('skills').insert({ ...payload, owner_id: user?.id });
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        const { error } = await supabase.from("skills").insert({ ...payload, owner_id: user?.id });
         if (error) throw error;
         toast({ title: "Skill Created", description: "New skill added." });
       }
       setEditingSkill(null);
       await fetchAll();
-    } catch (err:any) {
-      toast({ title: "Save failed", description: err?.message || "Unexpected error", variant: "destructive" });
+    } catch (err: any) {
+      toast({
+        title: "Save failed",
+        description: err?.message || "Unexpected error",
+        variant: "destructive",
+      });
     }
   };
 
   const handleDeleteSkill = async (id: string | number) => {
     try {
-      const { error } = await supabase.from('skills').delete().eq('id', id);
-      if (error) throw error;
+      const { error } = await supabase.from("skills").delete().eq("id", id);
+    if (error) throw error;
       toast({ title: "Skill Deleted", description: "Removed successfully." });
       await fetchAll();
-    } catch (err:any) {
-      toast({ title: "Delete failed", description: err?.message || "Unexpected error", variant: "destructive" });
+    } catch (err: any) {
+      toast({
+        title: "Delete failed",
+        description: err?.message || "Unexpected error",
+        variant: "destructive",
+      });
     }
   };
 
+  // ----------------- UI -----------------
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen flex items-center justify-center px-6 bg-background">
@@ -241,7 +339,7 @@ const Admin = () => {
                   id="email"
                   type="email"
                   value={loginData.email}
-                  onChange={(e)=>setLoginData(prev=>({...prev, email:e.target.value}))}
+                  onChange={(e) => setLoginData((prev) => ({ ...prev, email: e.target.value }))}
                   placeholder="admin@portfolio.com"
                   className="mt-2 glass border-border focus:border-neon"
                   required
@@ -254,7 +352,7 @@ const Admin = () => {
                     id="password"
                     type={showPassword ? "text" : "password"}
                     value={loginData.password}
-                    onChange={(e)=>setLoginData(prev=>({...prev, password:e.target.value}))}
+                    onChange={(e) => setLoginData((prev) => ({ ...prev, password: e.target.value }))}
                     placeholder="Enter your password"
                     className="mt-2 glass border-border focus:border-neon pr-10"
                     required
@@ -264,7 +362,7 @@ const Admin = () => {
                     variant="ghost"
                     size="icon"
                     className="absolute right-0 top-2 h-9 w-9"
-                    onClick={()=>setShowPassword(!showPassword)}
+                    onClick={() => setShowPassword(!showPassword)}
                   >
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </Button>
@@ -294,7 +392,9 @@ const Admin = () => {
             <h1 className="text-4xl font-bold text-gradient">Admin Dashboard</h1>
             <p className="text-muted-foreground">Manage your portfolio content</p>
           </div>
-          <Button variant="neon" onClick={handleLogout}>Logout</Button>
+          <Button variant="neon" onClick={handleLogout}>
+            Logout
+          </Button>
         </motion.div>
 
         {/* Stats */}
@@ -317,7 +417,7 @@ const Admin = () => {
           <Card className="glass p-6 text-center">
             <Eye className="w-8 h-8 text-warning mx-auto mb-2" />
             <div className="text-2xl font-bold">
-              {projects.filter(p=>p.status==='published').length}
+              {projects.filter((p) => (p.status || "").toLowerCase() === "published").length}
             </div>
             <div className="text-sm text-muted-foreground">Published</div>
           </Card>
@@ -354,7 +454,7 @@ const Admin = () => {
                           techTags: "",
                           highlights: "",
                           status: "draft",
-                          category: "fullstack",
+                          category: "fullstack" as ProjCatKey,
                           date: "",
                           github: "",
                           live: "",
@@ -380,7 +480,7 @@ const Admin = () => {
                           <Label>Title *</Label>
                           <Input
                             value={editingProject.title}
-                            onChange={(e)=>setEditingProject((p:any)=>({ ...p, title: e.target.value }))}
+                            onChange={(e) => setEditingProject((p: any) => ({ ...p, title: e.target.value }))}
                             className="glass"
                           />
                         </div>
@@ -389,7 +489,9 @@ const Admin = () => {
                           <Label>Description *</Label>
                           <Textarea
                             value={editingProject.description}
-                            onChange={(e)=>setEditingProject((p:any)=>({ ...p, description: e.target.value }))}
+                            onChange={(e) =>
+                              setEditingProject((p: any) => ({ ...p, description: e.target.value }))
+                            }
                             className="glass"
                           />
                         </div>
@@ -398,7 +500,9 @@ const Admin = () => {
                           <Label>Long Description</Label>
                           <Textarea
                             value={editingProject.longDescription || ""}
-                            onChange={(e)=>setEditingProject((p:any)=>({ ...p, longDescription: e.target.value }))}
+                            onChange={(e) =>
+                              setEditingProject((p: any) => ({ ...p, longDescription: e.target.value }))
+                            }
                             className="glass"
                           />
                         </div>
@@ -407,13 +511,19 @@ const Admin = () => {
                           <div>
                             <Label>Category</Label>
                             <Select
-                              value={editingProject.category}
-                              onValueChange={(v)=>setEditingProject((p:any)=>({ ...p, category: v }))}
+                              value={toProjectCatKey(editingProject.category)}
+                              onValueChange={(v) =>
+                                setEditingProject((p: any) => ({ ...p, category: v as ProjCatKey }))
+                              }
                             >
-                              <SelectTrigger className="glass"><SelectValue /></SelectTrigger>
+                              <SelectTrigger className="glass">
+                                <SelectValue placeholder="Select category" />
+                              </SelectTrigger>
                               <SelectContent>
-                                {CATEGORY_OPTIONS.map(c => (
-                                  <SelectItem key={c.id} value={c.id}>{c.label}</SelectItem>
+                                {PROJECT_CATEGORY_OPTIONS.map((c) => (
+                                  <SelectItem key={c.id} value={c.id}>
+                                    {c.label}
+                                  </SelectItem>
                                 ))}
                               </SelectContent>
                             </Select>
@@ -422,9 +532,11 @@ const Admin = () => {
                             <Label>Status</Label>
                             <Select
                               value={editingProject.status}
-                              onValueChange={(v)=>setEditingProject((p:any)=>({ ...p, status: v }))}
+                              onValueChange={(v) => setEditingProject((p: any) => ({ ...p, status: v }))}
                             >
-                              <SelectTrigger className="glass"><SelectValue /></SelectTrigger>
+                              <SelectTrigger className="glass">
+                                <SelectValue />
+                              </SelectTrigger>
                               <SelectContent>
                                 <SelectItem value="draft">Draft</SelectItem>
                                 <SelectItem value="published">Published</SelectItem>
@@ -439,7 +551,9 @@ const Admin = () => {
                             <Input
                               placeholder="YYYY-MM"
                               value={editingProject.date || ""}
-                              onChange={(e)=>setEditingProject((p:any)=>({ ...p, date: e.target.value }))}
+                              onChange={(e) =>
+                                setEditingProject((p: any) => ({ ...p, date: e.target.value }))
+                              }
                               className="glass"
                             />
                           </div>
@@ -448,7 +562,12 @@ const Admin = () => {
                             <Input
                               type="number"
                               value={editingProject.order_index ?? 0}
-                              onChange={(e)=>setEditingProject((p:any)=>({ ...p, order_index: parseInt(e.target.value)||0 }))}
+                              onChange={(e) =>
+                                setEditingProject((p: any) => ({
+                                  ...p,
+                                  order_index: parseInt(e.target.value) || 0,
+                                }))
+                              }
                               className="glass"
                             />
                           </div>
@@ -459,7 +578,9 @@ const Admin = () => {
                             <Label>GitHub URL</Label>
                             <Input
                               value={editingProject.github || ""}
-                              onChange={(e)=>setEditingProject((p:any)=>({ ...p, github: e.target.value }))}
+                              onChange={(e) =>
+                                setEditingProject((p: any) => ({ ...p, github: e.target.value }))
+                              }
                               className="glass"
                             />
                           </div>
@@ -467,7 +588,9 @@ const Admin = () => {
                             <Label>Live URL</Label>
                             <Input
                               value={editingProject.live || ""}
-                              onChange={(e)=>setEditingProject((p:any)=>({ ...p, live: e.target.value }))}
+                              onChange={(e) =>
+                                setEditingProject((p: any) => ({ ...p, live: e.target.value }))
+                              }
                               className="glass"
                             />
                           </div>
@@ -479,7 +602,12 @@ const Admin = () => {
                             <Input
                               type="number"
                               value={editingProject.team ?? 1}
-                              onChange={(e)=>setEditingProject((p:any)=>({ ...p, team: parseInt(e.target.value)||1 }))}
+                              onChange={(e) =>
+                                setEditingProject((p: any) => ({
+                                  ...p,
+                                  team: parseInt(e.target.value) || 1,
+                                }))
+                              }
                               className="glass"
                             />
                           </div>
@@ -487,7 +615,9 @@ const Admin = () => {
                             <Label>Duration</Label>
                             <Input
                               value={editingProject.duration || ""}
-                              onChange={(e)=>setEditingProject((p:any)=>({ ...p, duration: e.target.value }))}
+                              onChange={(e) =>
+                                setEditingProject((p: any) => ({ ...p, duration: e.target.value }))
+                              }
                               className="glass"
                             />
                           </div>
@@ -497,7 +627,9 @@ const Admin = () => {
                           <Label>Image URL</Label>
                           <Input
                             value={editingProject.image_url || ""}
-                            onChange={(e)=>setEditingProject((p:any)=>({ ...p, image_url: e.target.value }))}
+                            onChange={(e) =>
+                              setEditingProject((p: any) => ({ ...p, image_url: e.target.value }))
+                            }
                             className="glass"
                           />
                         </div>
@@ -506,7 +638,9 @@ const Admin = () => {
                           <Label>Tech Stack (comma separated)</Label>
                           <Input
                             value={editingProject.techTags ?? toComma(editingProject.tags)}
-                            onChange={(e)=>setEditingProject((p:any)=>({ ...p, techTags: e.target.value }))}
+                            onChange={(e) =>
+                              setEditingProject((p: any) => ({ ...p, techTags: e.target.value }))
+                            }
                             className="glass"
                           />
                         </div>
@@ -514,17 +648,26 @@ const Admin = () => {
                         <div>
                           <Label>Highlights (comma separated)</Label>
                           <Input
-                            value={typeof editingProject.highlights === "string" ? editingProject.highlights : toComma(editingProject.highlights)}
-                            onChange={(e)=>setEditingProject((p:any)=>({ ...p, highlights: e.target.value }))}
+                            value={
+                              typeof editingProject.highlights === "string"
+                                ? editingProject.highlights
+                                : toComma(editingProject.highlights)
+                            }
+                            onChange={(e) =>
+                              setEditingProject((p: any) => ({ ...p, highlights: e.target.value }))
+                            }
                             className="glass"
                           />
                         </div>
 
                         <div className="flex gap-3">
                           <Button variant="hero" onClick={handleSaveProject}>
-                            <Save className="mr-2 h-4 w-4" />Save Project
+                            <Save className="mr-2 h-4 w-4" />
+                            Save Project
                           </Button>
-                          <Button variant="neon" onClick={()=>setEditingProject(null)}>Cancel</Button>
+                          <Button variant="neon" onClick={() => setEditingProject(null)}>
+                            Cancel
+                          </Button>
                         </div>
                       </div>
                     )}
@@ -535,22 +678,33 @@ const Admin = () => {
               <div className="space-y-4">
                 {projects.map((project) => {
                   const tagList = toArray(project?.tags);
+                  const cat = toProjectCatKey(project?.category);
                   return (
                     <Card key={project.id} className="p-4 bg-muted/20 hover-lift">
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
                           <div className="flex items-center gap-3 mb-2">
                             <h3 className="font-bold">{project.title}</h3>
-                            <Badge variant={project.status === 'published' ? 'default' : 'secondary'}>
+                            <Badge
+                              variant={
+                                (project.status || "").toLowerCase() === "published"
+                                  ? "default"
+                                  : "secondary"
+                              }
+                            >
                               {project.status}
                             </Badge>
-                            {project.category && <Badge variant="outline">{project.category}</Badge>}
+                            <Badge variant="outline">{PROJ_CAT_LABELS[cat]}</Badge>
                             <Badge variant="outline">Order: {project.order_index ?? 0}</Badge>
                           </div>
-                          <p className="text-muted-foreground text-sm mb-2">{project.description}</p>
+                          <p className="text-muted-foreground text-sm mb-2">
+                            {project.description}
+                          </p>
                           <div className="flex flex-wrap gap-1">
                             {tagList.map((t, i) => (
-                              <Badge key={i} variant="secondary" className="text-xs">{t}</Badge>
+                              <Badge key={i} variant="secondary" className="text-xs">
+                                {t}
+                              </Badge>
                             ))}
                           </div>
                         </div>
@@ -560,11 +714,14 @@ const Admin = () => {
                               <Button
                                 variant="glass"
                                 size="icon"
-                                onClick={() => setEditingProject({
-                                  ...project,
-                                  techTags: toComma(project.tags),
-                                  highlights: toComma(project.highlights),
-                                })}
+                                onClick={() =>
+                                  setEditingProject({
+                                    ...project,
+                                    category: toProjectCatKey(project.category), // ensure dialog shows canonical
+                                    techTags: toComma(project.tags),
+                                    highlights: toComma(project.highlights),
+                                  })
+                                }
                               >
                                 <Edit className="h-4 w-4" />
                               </Button>
@@ -594,10 +751,17 @@ const Admin = () => {
                 <h2 className="text-2xl font-bold">Manage Skills</h2>
                 <Dialog>
                   <DialogTrigger asChild>
-                    {/* DEFAULT category = canonical 'frontend' */}
                     <Button
                       variant="hero"
-                      onClick={() => setEditingSkill({ id:null, name:"", description:"", level:50, category:"frontend" })}
+                      onClick={() =>
+                        setEditingSkill({
+                          id: null,
+                          name: "",
+                          description: "",
+                          level: 50,
+                          category: "frontend" as SkillCatKey,
+                        })
+                      }
                     >
                       <Plus className="mr-2 h-4 w-4" /> Add Skill
                     </Button>
@@ -612,7 +776,9 @@ const Admin = () => {
                           <Label>Skill Name *</Label>
                           <Input
                             value={editingSkill.name}
-                            onChange={(e)=>setEditingSkill((s:any)=>({ ...s, name: e.target.value }))}
+                            onChange={(e) =>
+                              setEditingSkill((s: any) => ({ ...s, name: e.target.value }))
+                            }
                             className="glass"
                           />
                         </div>
@@ -620,7 +786,9 @@ const Admin = () => {
                           <Label>Description</Label>
                           <Input
                             value={editingSkill.description}
-                            onChange={(e)=>setEditingSkill((s:any)=>({ ...s, description: e.target.value }))}
+                            onChange={(e) =>
+                              setEditingSkill((s: any) => ({ ...s, description: e.target.value }))
+                            }
                             className="glass"
                           />
                         </div>
@@ -632,36 +800,44 @@ const Admin = () => {
                               min="0"
                               max="100"
                               value={editingSkill.level}
-                              onChange={(e)=>setEditingSkill((s:any)=>({ ...s, level: parseInt(e.target.value)||0 }))}
+                              onChange={(e) =>
+                                setEditingSkill((s: any) => ({
+                                  ...s,
+                                  level: parseInt(e.target.value) || 0,
+                                }))
+                              }
                               className="glass"
                             />
                           </div>
                           <div>
                             <Label>Category</Label>
-                            {/* VALUES are canonical lowercase keys */}
                             <Select
-                              value={editingSkill.category}
-                              onValueChange={(v)=>setEditingSkill((s:any)=>({ ...s, category: v }))}
+                              value={toSkillCatKey(editingSkill.category)}
+                              onValueChange={(v) =>
+                                setEditingSkill((s: any) => ({ ...s, category: v as SkillCatKey }))
+                              }
                             >
                               <SelectTrigger className="glass">
                                 <SelectValue placeholder="Select a category" />
                               </SelectTrigger>
                               <SelectContent>
-                                <SelectItem value="frontend">Frontend</SelectItem>
-                                <SelectItem value="backend">Backend</SelectItem>
-                                <SelectItem value="ai">AI & ML</SelectItem>
-                                <SelectItem value="dataanalysis">Data Analysis</SelectItem>
-                                <SelectItem value="design">Design</SelectItem>
-                                <SelectItem value="tools">Tools / Other</SelectItem>
+                                {SKILL_CATEGORY_OPTIONS.map((c) => (
+                                  <SelectItem key={c.id} value={c.id}>
+                                    {c.label}
+                                  </SelectItem>
+                                ))}
                               </SelectContent>
                             </Select>
                           </div>
                         </div>
                         <div className="flex gap-3">
                           <Button variant="hero" onClick={handleSaveSkill}>
-                            <Save className="mr-2 h-4 w-4" />Save Skill
+                            <Save className="mr-2 h-4 w-4" />
+                            Save Skill
                           </Button>
-                          <Button variant="neon" onClick={()=>setEditingSkill(null)}>Cancel</Button>
+                          <Button variant="neon" onClick={() => setEditingSkill(null)}>
+                            Cancel
+                          </Button>
                         </div>
                       </div>
                     )}
@@ -670,57 +846,57 @@ const Admin = () => {
               </div>
 
               <div className="space-y-4">
-                {skills.map((skill) => (
-                  <Card key={skill.id} className="p-4 bg-muted/20 hover-lift">
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-3 mb-2">
-                          <h3 className="font-bold">{skill.name}</h3>
-                          <Badge variant="outline">
-                            {SKILL_CAT_LABELS[toSkillCatKey(skill.category as SkillCatKey)]}
-                          </Badge>
-                          <Badge
-                            variant="secondary"
-                            className={`${
-                              (skill.level ?? 0) >= 90
-                                ? 'text-neon'
-                                : (skill.level ?? 0) >= 80
-                                  ? 'text-primary'
-                                  : 'text-warning'
-                            }`}
-                          >
-                            {skill.level}%
-                          </Badge>
-                        </div>
-                        <p className="text-muted-foreground text-sm">{skill.description}</p>
-                      </div>
-                      <div className="flex gap-2 ml-4">
-                        <Dialog>
-                          <DialogTrigger asChild>
-                            <Button
-                              variant="glass"
-                              size="icon"
-                              onClick={() => setEditingSkill({
-                                ...skill,
-                                category: toSkillCatKey(skill.category as SkillCatKey), // ensure dialog shows canonical
-                              })}
+                {skills.map((skill) => {
+                  const cat = toSkillCatKey(skill.category);
+                  const lvl = Number(skill.level ?? 0);
+                  return (
+                    <Card key={skill.id} className="p-4 bg-muted/20 hover-lift">
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3 mb-2">
+                            <h3 className="font-bold">{skill.name}</h3>
+                            <Badge variant="outline">{SKILL_CAT_LABELS[cat]}</Badge>
+                            <Badge
+                              variant="secondary"
+                              className={`${
+                                lvl >= 90 ? "text-neon" : lvl >= 80 ? "text-primary" : "text-warning"
+                              }`}
                             >
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                          </DialogTrigger>
-                        </Dialog>
-                        <Button
-                          variant="glass"
-                          size="icon"
-                          onClick={() => handleDeleteSkill(skill.id)}
-                          className="hover:border-destructive hover:text-destructive"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                              {lvl}%
+                            </Badge>
+                          </div>
+                          <p className="text-muted-foreground text-sm">{skill.description}</p>
+                        </div>
+                        <div className="flex gap-2 ml-4">
+                          <Dialog>
+                            <DialogTrigger asChild>
+                              <Button
+                                variant="glass"
+                                size="icon"
+                                onClick={() =>
+                                  setEditingSkill({
+                                    ...skill,
+                                    category: toSkillCatKey(skill.category), // ensure dialog shows canonical
+                                  })
+                                }
+                              >
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                            </DialogTrigger>
+                          </Dialog>
+                          <Button
+                            variant="glass"
+                            size="icon"
+                            onClick={() => handleDeleteSkill(skill.id)}
+                            className="hover:border-destructive hover:text-destructive"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </div>
-                    </div>
-                  </Card>
-                ))}
+                    </Card>
+                  );
+                })}
               </div>
             </Card>
           </TabsContent>
