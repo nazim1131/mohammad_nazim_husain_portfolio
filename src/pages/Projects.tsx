@@ -407,7 +407,6 @@
 
 // export default Projects;
 
-
 import { useState, useEffect, useMemo } from "react";
 import { supabase } from "@/lib/supabase";
 import { motion, AnimatePresence } from "framer-motion";
@@ -415,74 +414,86 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/enhanced-button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ExternalLink, Github, Eye, Calendar, Users, Star } from "lucide-react";
+import { ExternalLink, Github, Calendar, Users, Star } from "lucide-react";
 
 /* ---------------- helpers ---------------- */
 
 const toArray = (v: any): string[] =>
   Array.isArray(v) ? v : typeof v === "string" ? v.split(",").map(s => s.trim()).filter(Boolean) : [];
 
-// status → badge classes
 const getStatusBadge = (status: string) =>
-  status === "in-progress" ? "bg-warning/20 text-warning" :
-  status === "completed"  ? "bg-success/20 text-success"  :
-                            "bg-muted/20 text-muted-foreground";
+  status === "in-progress" ? "bg-warning/20 text-warning"
+  : status === "completed"  ? "bg-success/20 text-success"
+  :                           "bg-muted/20 text-muted-foreground";
 
-// Category normalize: DB/UI में कुछ भी लिखा हो, canonical id में map कर दो
-const normalizeCategory = (raw: any): "fullstack" | "frontend" | "design" | "ai" | "dataanalysis" => {
+type CanonCat = "fullstack" | "frontend" | "design" | "ai" | "dataanalysis";
+const normalizeCategory = (raw: any): CanonCat => {
   const s = String(raw || "").toLowerCase().trim();
-
-  // exact matches
-  if (["fullstack", "frontend", "design", "ai", "dataanalysis"].includes(s)) return s as any;
-
-  // common variants / synonyms
+  if (["fullstack", "frontend", "design", "ai", "dataanalysis"].includes(s)) return s as CanonCat;
   if (s.includes("full")) return "fullstack";
   if (s.includes("front")) return "frontend";
-  if (s.includes("design")) return "design";            // design / designs
-  if (s.includes("ai") || s.includes("ml")) return "ai"; // ai & ml / ai/ml
-  if (s.includes("data")) return "dataanalysis";         // data analysis / data-analytics
-
-  // default
+  if (s.includes("design")) return "design";
+  if (s.includes("ai") || s.includes("ml")) return "ai";
+  if (s.includes("data")) return "dataanalysis";
   return "fullstack";
 };
 
-// Paste-anywhere image URL → loadable URL (Drive/Dropbox handled)
+// Convert common share links to direct-view image URLs
 const toDisplayImage = (raw?: string): string => {
-  const Fallback = "/api/placeholder/800/450";
   const u = (raw || "").trim();
-  if (!u) return Fallback;
-
+  if (!u) return "/api/placeholder/800/450";
   const withProto = u.startsWith("http") ? u : `https://${u}`;
 
   try {
     const url = new URL(withProto);
 
-    // ---- Google Drive formats ----
-    // /file/d/<ID>/view ...
-    // ?id=<ID> ...
-    // /uc?export=download&id=<ID>
+    // Google Drive
     if (url.hostname.includes("drive.google.com")) {
       let m = withProto.match(/\/d\/([^/]+)/);
       if (!m) m = withProto.match(/[?&]id=([^&]+)/);
       const id = m?.[1];
       if (id) return `https://drive.google.com/uc?export=view&id=${id}`;
     }
-
-    // ---- Dropbox share → direct ----
-    // https://www.dropbox.com/s/<id>/image.png?dl=0  →  dl=1
+    // Dropbox
     if (url.hostname.includes("dropbox.com")) {
       url.searchParams.set("dl", "1");
       return url.toString();
     }
-
-    // already a direct/normal image url
     return withProto;
   } catch {
-    return withProto || Fallback;
+    return withProto;
   }
 };
 
-// DB → UI normalize
+// Image that *sticks* to a working src (prevents flicker loops)
+const ImgWithFallback: React.FC<{
+  src: string;
+  alt: string;
+  className?: string;
+  placeholder?: string;
+  loading?: "lazy" | "eager";
+}> = ({ src, alt, className, placeholder = "/api/placeholder/800/450", loading = "lazy" }) => {
+  const [currentSrc, setCurrentSrc] = useState(src);
+  useEffect(() => {
+    // only update if the incoming src actually changed
+    setCurrentSrc(src || placeholder);
+  }, [src, placeholder]);
+  return (
+    <img
+      src={currentSrc}
+      alt={alt}
+      className={className}
+      loading={loading}
+      onError={() => {
+        if (currentSrc !== placeholder) setCurrentSrc(placeholder);
+      }}
+      // avoid alt flicker in some browsers when rapidly swapping src
+      style={{ willChange: "transform" }}
+    />
+  );
+};
+
+// DB → UI
 const normalizeDbProject = (p: any) => ({
   id: p.id,
   title: p.title,
@@ -500,10 +511,10 @@ const normalizeDbProject = (p: any) => ({
   highlights: Array.isArray(p.highlights) ? p.highlights : toArray(p.highlights),
 });
 
-/* ---------- optional static fallback ---------- */
+/* ---------- optional static ---------- */
 const staticProjects: any[] = [];
 
-/* ---------- filter categories ---------- */
+/* ---------- filters ---------- */
 const CATEGORIES = [
   { id: "all",          label: "All Projects" },
   { id: "fullstack",    label: "Full Stack" },
@@ -537,44 +548,24 @@ const Projects = () => {
     return [...staticProjects, ...normalizedDb];
   }, [dbProjects]);
 
-  const filtered = useMemo(() => {
-    return filter === "all"
-      ? merged
-      : merged.filter((p) => normalizeCategory(p.category) === filter);
-  }, [merged, filter]);
+  const filtered = useMemo(
+    () => (filter === "all" ? merged : merged.filter(p => normalizeCategory(p.category) === filter)),
+    [merged, filter],
+  );
 
   return (
     <div className="min-h-screen pt-24 pb-16 px-6">
       <div className="max-w-6xl mx-auto">
         {/* Header */}
-        <motion.div
-          className="text-center mb-16"
-          initial={{ opacity: 0, y: 30 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8 }}
-        >
-          <h1 className="text-4xl md:text-6xl font-bold mb-4">
-            My <span className="text-gradient">Projects</span>
-          </h1>
-          <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-            A showcase of my latest work and technical achievements
-          </p>
+        <motion.div className="text-center mb-16" initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.8 }}>
+          <h1 className="text-4xl md:text-6xl font-bold mb-4">My <span className="text-gradient">Projects</span></h1>
+          <p className="text-xl text-muted-foreground max-w-2xl mx-auto">A showcase of my latest work and technical achievements</p>
         </motion.div>
 
         {/* Filters */}
-        <motion.div
-          className="flex flex-wrap justify-center gap-3 mb-12"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8, delay: 0.2 }}
-        >
+        <motion.div className="flex flex-wrap justify-center gap-3 mb-12" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.8, delay: 0.2 }}>
           {CATEGORIES.map((c) => (
-            <Button
-              key={c.id}
-              variant={filter === c.id ? "hero" : "glass"}
-              onClick={() => setFilter(c.id)}
-              className="transition-all duration-200"
-            >
+            <Button key={c.id} variant={filter === c.id ? "hero" : "glass"} onClick={() => setFilter(c.id)} className="transition-all duration-200">
               {c.label}
             </Button>
           ))}
@@ -594,19 +585,13 @@ const Projects = () => {
                 exit={{ opacity: 0, scale: 0.9 }}
                 transition={{ duration: 0.5, delay: index * 0.1 }}
               >
-                <Card
-                  className="glass hover-lift overflow-hidden group cursor-pointer h-full"
-                  onClick={() => setSelectedProject(project)}
-                >
+                <Card className="glass hover-lift overflow-hidden group cursor-pointer h-full" onClick={() => setSelectedProject(project)}>
                   <div className="relative aspect-video bg-muted/10 overflow-hidden">
-                    <img
+                    <ImgWithFallback
                       src={project.image}
                       alt={project.title}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                      loading="lazy"
-                      onError={(e) => {
-                        (e.currentTarget as HTMLImageElement).src = "/api/placeholder/800/450";
-                      }}
+                      placeholder="/api/placeholder/800/450"
                     />
                     <Badge className={`absolute top-3 right-3 ${getStatusBadge(project.status || "completed")}`}>
                       {project.status === "in-progress" ? "In Progress" : "Completed"}
@@ -615,59 +600,41 @@ const Projects = () => {
 
                   <div className="p-6">
                     <div className="flex items-start justify-between mb-3">
-                      <h3 className="text-xl font-bold group-hover:text-neon transition-colors">
-                        {project.title}
-                      </h3>
+                      <h3 className="text-xl font-bold group-hover:text-neon transition-colors">{project.title}</h3>
                       <div className="flex items-center text-muted-foreground text-sm">
                         <Calendar className="w-4 h-4 mr-1" />
                         {project.date}
                       </div>
                     </div>
 
-                    <p className="text-muted-foreground text-sm mb-4 line-clamp-2">
-                      {project.description}
-                    </p>
+                    <p className="text-muted-foreground text-sm mb-4 line-clamp-2">{project.description}</p>
 
                     {Array.isArray(project.tech) && project.tech.length > 0 && (
                       <div className="flex flex-wrap gap-1 mb-4">
                         {project.tech.slice(0, 3).map((tech: string) => (
-                          <Badge key={tech} variant="secondary" className="text-xs">
-                            {tech}
-                          </Badge>
+                          <Badge key={tech} variant="secondary" className="text-xs">{tech}</Badge>
                         ))}
                         {project.tech.length > 3 && (
-                          <Badge variant="secondary" className="text-xs">
-                            +{project.tech.length - 3}
-                          </Badge>
+                          <Badge variant="secondary" className="text-xs">+{project.tech.length - 3}</Badge>
                         )}
                       </div>
                     )}
 
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                        <div className="flex items-center">
-                          <Users className="w-4 h-4 mr-1" />
-                          {project.team ?? 1}
-                        </div>
-                        <div className="flex items-center">
-                          <Star className="w-4 h-4 mr-1" />
-                          {(Array.isArray(project.highlights) ? project.highlights.length : 0)}
-                        </div>
+                        <div className="flex items-center"><Users className="w-4 h-4 mr-1" />{project.team ?? 1}</div>
+                        <div className="flex items-center"><Star className="w-4 h-4 mr-1" />{(Array.isArray(project.highlights) ? project.highlights.length : 0)}</div>
                       </div>
 
                       <div className="flex gap-2">
                         {project.github && (
                           <Button variant="glass" size="icon" asChild>
-                            <a href={project.github} target="_blank" rel="noopener noreferrer">
-                              <Github className="w-4 h-4" />
-                            </a>
+                            <a href={project.github} target="_blank" rel="noopener noreferrer"><Github className="w-4 h-4" /></a>
                           </Button>
                         )}
                         {project.live && (
                           <Button variant="glass" size="icon" asChild>
-                            <a href={project.live} target="_blank" rel="noopener noreferrer">
-                              <ExternalLink className="w-4 h-4" />
-                            </a>
+                            <a href={project.live} target="_blank" rel="noopener noreferrer"><ExternalLink className="w-4 h-4" /></a>
                           </Button>
                         )}
                       </div>
@@ -685,21 +652,17 @@ const Projects = () => {
             {selectedProject && (
               <>
                 <DialogHeader>
-                  <DialogTitle className="text-2xl font-bold text-gradient">
-                    {selectedProject.title}
-                  </DialogTitle>
+                  <DialogTitle className="text-2xl font-bold text-gradient">{selectedProject.title}</DialogTitle>
                 </DialogHeader>
 
                 <div className="space-y-6">
-                  {/* screenshot */}
                   <div className="aspect-video bg-muted/10 rounded-lg overflow-hidden">
-                    <img
+                    <ImgWithFallback
                       src={selectedProject.image}
                       alt={selectedProject.title}
                       className="w-full h-full object-cover"
-                      onError={(e) => {
-                        (e.currentTarget as HTMLImageElement).src = "/api/placeholder/800/450";
-                      }}
+                      placeholder="/api/placeholder/800/450"
+                      loading="eager"
                     />
                   </div>
 
@@ -718,8 +681,7 @@ const Projects = () => {
                           <ul className="space-y-1">
                             {selectedProject.highlights.map((h: string, i: number) => (
                               <li key={i} className="flex items-center text-muted-foreground">
-                                <Star className="w-4 h-4 mr-2 text-neon" />
-                                {h}
+                                <Star className="w-4 h-4 mr-2 text-neon" />{h}
                               </li>
                             ))}
                           </ul>
@@ -738,26 +700,14 @@ const Projects = () => {
                             </Badge>
                           </div>
                           {selectedProject.duration && (
-                            <div className="flex justify-between">
-                              <span className="text-muted-foreground">Duration:</span>
-                              <span>{selectedProject.duration}</span>
-                            </div>
+                            <div className="flex justify-between"><span className="text-muted-foreground">Duration:</span><span>{selectedProject.duration}</span></div>
                           )}
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Team Size:</span>
-                            <span>{selectedProject.team ?? 1} members</span>
-                          </div>
+                          <div className="flex justify-between"><span className="text-muted-foreground">Team Size:</span><span>{selectedProject.team ?? 1} members</span></div>
                           {selectedProject.date && (
-                            <div className="flex justify-between">
-                              <span className="text-muted-foreground">Date:</span>
-                              <span>{selectedProject.date}</span>
-                            </div>
+                            <div className="flex justify-between"><span className="text-muted-foreground">Date:</span><span>{selectedProject.date}</span></div>
                           )}
                           {selectedProject.category && (
-                            <div className="flex justify-between">
-                              <span className="text-muted-foreground">Category:</span>
-                              <span className="capitalize">{normalizeCategory(selectedProject.category)}</span>
-                            </div>
+                            <div className="flex justify-between"><span className="text-muted-foreground">Category:</span><span className="capitalize">{normalizeCategory(selectedProject.category)}</span></div>
                           )}
                         </div>
                       </Card>
