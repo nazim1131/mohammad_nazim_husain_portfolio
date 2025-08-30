@@ -405,7 +405,6 @@
 //   );
 // };
 
-// export default Projects;
 
 import { useState, useEffect, useMemo } from "react";
 import { supabase } from "@/lib/supabase";
@@ -414,36 +413,36 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/enhanced-button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ExternalLink, Github, Calendar, Users, Star } from "lucide-react";
+import { ExternalLink, Github, Eye, Calendar, Users, Star } from "lucide-react";
 
 /* ---------------- helpers ---------------- */
 
 const toArray = (v: any): string[] =>
   Array.isArray(v) ? v : typeof v === "string" ? v.split(",").map(s => s.trim()).filter(Boolean) : [];
 
+// badge by status
 const getStatusBadge = (status: string) =>
-  status === "in-progress" ? "bg-warning/20 text-warning"
-  : status === "completed"  ? "bg-success/20 text-success"
-  :                           "bg-muted/20 text-muted-foreground";
+  status === "in-progress" ? "bg-warning/20 text-warning" :
+  status === "completed" ? "bg-success/20 text-success" :
+  "bg-muted/20 text-muted-foreground";
 
-type CanonCat = "fullstack" | "frontend" | "design" | "ai" | "dataanalysis";
-const normalizeCategory = (raw: any): CanonCat => {
+// fix category text coming from DB → canonical ids we filter on
+const normalizeCategory = (raw: any): string => {
   const s = String(raw || "").toLowerCase().trim();
-  if (["fullstack", "frontend", "design", "ai", "dataanalysis"].includes(s)) return s as CanonCat;
-  if (s.includes("full")) return "fullstack";
-  if (s.includes("front")) return "frontend";
+  if (["fullstack", "frontend", "backend", "mobile", "design", "ai", "dataanalysis", "blockchain", "iot"].includes(s)) return s;
   if (s.includes("design")) return "design";
   if (s.includes("ai") || s.includes("ml")) return "ai";
   if (s.includes("data")) return "dataanalysis";
+  if (s.includes("front")) return "frontend";
+  if (s.includes("full")) return "fullstack";
   return "fullstack";
 };
 
-// Convert common share links to direct-view image URLs
+/** Convert common share links -> direct image links */
 const toDisplayImage = (raw?: string): string => {
   const u = (raw || "").trim();
-  if (!u) return "/api/placeholder/800/450";
+  if (!u) return "";
   const withProto = u.startsWith("http") ? u : `https://${u}`;
-
   try {
     const url = new URL(withProto);
 
@@ -454,52 +453,27 @@ const toDisplayImage = (raw?: string): string => {
       const id = m?.[1];
       if (id) return `https://drive.google.com/uc?export=view&id=${id}`;
     }
+
     // Dropbox
     if (url.hostname.includes("dropbox.com")) {
-      url.searchParams.set("dl", "1");
+      url.searchParams.set("dl", "1"); // force direct download/view
       return url.toString();
     }
+
+    // otherwise use as-is
     return withProto;
   } catch {
     return withProto;
   }
 };
 
-// Image that *sticks* to a working src (prevents flicker loops)
-const ImgWithFallback: React.FC<{
-  src: string;
-  alt: string;
-  className?: string;
-  placeholder?: string;
-  loading?: "lazy" | "eager";
-}> = ({ src, alt, className, placeholder = "/api/placeholder/800/450", loading = "lazy" }) => {
-  const [currentSrc, setCurrentSrc] = useState(src);
-  useEffect(() => {
-    // only update if the incoming src actually changed
-    setCurrentSrc(src || placeholder);
-  }, [src, placeholder]);
-  return (
-    <img
-      src={currentSrc}
-      alt={alt}
-      className={className}
-      loading={loading}
-      onError={() => {
-        if (currentSrc !== placeholder) setCurrentSrc(placeholder);
-      }}
-      // avoid alt flicker in some browsers when rapidly swapping src
-      style={{ willChange: "transform" }}
-    />
-  );
-};
-
-// DB → UI
+// DB → UI normalize
 const normalizeDbProject = (p: any) => ({
   id: p.id,
   title: p.title,
   description: p.description,
   longDescription: p.longDescription || p.description || "",
-  image: toDisplayImage(p.image_url) || "/api/placeholder/800/450",
+  image: toDisplayImage(p.image_url), // key line
   tech: toArray(p.tags),
   category: normalizeCategory(p.category),
   status: p.status === "published" ? "completed" : (p.status || "completed"),
@@ -511,10 +485,56 @@ const normalizeDbProject = (p: any) => ({
   highlights: Array.isArray(p.highlights) ? p.highlights : toArray(p.highlights),
 });
 
-/* ---------- optional static ---------- */
-const staticProjects: any[] = [];
+/* ---------- tiny inline SVG placeholder (no network) ---------- */
+const PLACEHOLDER =
+  'data:image/svg+xml;utf8,' +
+  encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="450">
+      <defs>
+        <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+          <stop stop-color="#1f2937" offset="0"/><stop stop-color="#0b1320" offset="1"/>
+        </linearGradient>
+      </defs>
+      <rect width="100%" height="100%" fill="url(#g)"/>
+      <g fill="#94a3b8" font-family="sans-serif" font-size="20">
+        <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle">Image unavailable</text>
+      </g>
+    </svg>`
+  );
 
-/* ---------- filters ---------- */
+/* ---------- <img> with no-referrer + solid fallback (prevents flicker) ---------- */
+const ImgWithFallback: React.FC<{
+  src: string;
+  alt: string;
+  className?: string;
+  placeholder?: string;
+  loading?: "lazy" | "eager";
+}> = ({ src, alt, className, placeholder = PLACEHOLDER, loading = "lazy" }) => {
+  const [currentSrc, setCurrentSrc] = useState(src || placeholder);
+  useEffect(() => {
+    setCurrentSrc(src || placeholder);
+  }, [src, placeholder]);
+
+  return (
+    <img
+      src={currentSrc || placeholder}
+      alt={alt}
+      className={className}
+      loading={loading}
+      crossOrigin="anonymous"
+      referrerPolicy="no-referrer"
+      onError={() => {
+        if (currentSrc !== placeholder) setCurrentSrc(placeholder);
+      }}
+      style={{ willChange: "transform" }}
+    />
+  );
+};
+
+/* ---------- static fallback (optional) ---------- */
+const staticProjects: any[] = []; // keep empty or add demo items
+
+/* ---------- filter categories (ids match DB) ---------- */
 const CATEGORIES = [
   { id: "all",          label: "All Projects" },
   { id: "fullstack",    label: "Full Stack" },
@@ -548,10 +568,9 @@ const Projects = () => {
     return [...staticProjects, ...normalizedDb];
   }, [dbProjects]);
 
-  const filtered = useMemo(
-    () => (filter === "all" ? merged : merged.filter(p => normalizeCategory(p.category) === filter)),
-    [merged, filter],
-  );
+  const filtered = useMemo(() => {
+    return filter === "all" ? merged : merged.filter(p => normalizeCategory(p.category) === filter);
+  }, [merged, filter]);
 
   return (
     <div className="min-h-screen pt-24 pb-16 px-6">
@@ -585,13 +604,16 @@ const Projects = () => {
                 exit={{ opacity: 0, scale: 0.9 }}
                 transition={{ duration: 0.5, delay: index * 0.1 }}
               >
-                <Card className="glass hover-lift overflow-hidden group cursor-pointer h-full" onClick={() => setSelectedProject(project)}>
+                <Card
+                  className="glass hover-lift overflow-hidden group cursor-pointer h-full"
+                  onClick={() => setSelectedProject(project)}
+                >
                   <div className="relative aspect-video bg-muted/10 overflow-hidden">
                     <ImgWithFallback
                       src={project.image}
                       alt={project.title}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                      placeholder="/api/placeholder/800/450"
+                      loading="lazy"
                     />
                     <Badge className={`absolute top-3 right-3 ${getStatusBadge(project.status || "completed")}`}>
                       {project.status === "in-progress" ? "In Progress" : "Completed"}
@@ -609,7 +631,7 @@ const Projects = () => {
 
                     <p className="text-muted-foreground text-sm mb-4 line-clamp-2">{project.description}</p>
 
-                    {Array.isArray(project.tech) && project.tech.length > 0 && (
+                    {!!project.tech?.length && (
                       <div className="flex flex-wrap gap-1 mb-4">
                         {project.tech.slice(0, 3).map((tech: string) => (
                           <Badge key={tech} variant="secondary" className="text-xs">{tech}</Badge>
@@ -622,19 +644,29 @@ const Projects = () => {
 
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                        <div className="flex items-center"><Users className="w-4 h-4 mr-1" />{project.team ?? 1}</div>
-                        <div className="flex items-center"><Star className="w-4 h-4 mr-1" />{(Array.isArray(project.highlights) ? project.highlights.length : 0)}</div>
+                        <div className="flex items-center">
+                          <Users className="w-4 h-4 mr-1" />
+                          {project.team ?? 1}
+                        </div>
+                        <div className="flex items-center">
+                          <Star className="w-4 h-4 mr-1" />
+                          {(Array.isArray(project.highlights) ? project.highlights.length : 0)}
+                        </div>
                       </div>
 
                       <div className="flex gap-2">
                         {project.github && (
                           <Button variant="glass" size="icon" asChild>
-                            <a href={project.github} target="_blank" rel="noopener noreferrer"><Github className="w-4 h-4" /></a>
+                            <a href={project.github} target="_blank" rel="noopener noreferrer">
+                              <Github className="w-4 h-4" />
+                            </a>
                           </Button>
                         )}
                         {project.live && (
                           <Button variant="glass" size="icon" asChild>
-                            <a href={project.live} target="_blank" rel="noopener noreferrer"><ExternalLink className="w-4 h-4" /></a>
+                            <a href={project.live} target="_blank" rel="noopener noreferrer">
+                              <ExternalLink className="w-4 h-4" />
+                            </a>
                           </Button>
                         )}
                       </div>
@@ -652,16 +684,18 @@ const Projects = () => {
             {selectedProject && (
               <>
                 <DialogHeader>
-                  <DialogTitle className="text-2xl font-bold text-gradient">{selectedProject.title}</DialogTitle>
+                  <DialogTitle className="text-2xl font-bold text-gradient">
+                    {selectedProject.title}
+                  </DialogTitle>
                 </DialogHeader>
 
                 <div className="space-y-6">
+                  {/* screenshot */}
                   <div className="aspect-video bg-muted/10 rounded-lg overflow-hidden">
                     <ImgWithFallback
                       src={selectedProject.image}
                       alt={selectedProject.title}
                       className="w-full h-full object-cover"
-                      placeholder="/api/placeholder/800/450"
                       loading="eager"
                     />
                   </div>
@@ -675,13 +709,14 @@ const Projects = () => {
                         </p>
                       </div>
 
-                      {Array.isArray(selectedProject.highlights) && selectedProject.highlights.length > 0 && (
+                      {!!selectedProject.highlights?.length && (
                         <div>
                           <h4 className="font-semibold mb-2">Key Highlights</h4>
                           <ul className="space-y-1">
                             {selectedProject.highlights.map((h: string, i: number) => (
                               <li key={i} className="flex items-center text-muted-foreground">
-                                <Star className="w-4 h-4 mr-2 text-neon" />{h}
+                                <Star className="w-4 h-4 mr-2 text-neon" />
+                                {h}
                               </li>
                             ))}
                           </ul>
@@ -700,19 +735,31 @@ const Projects = () => {
                             </Badge>
                           </div>
                           {selectedProject.duration && (
-                            <div className="flex justify-between"><span className="text-muted-foreground">Duration:</span><span>{selectedProject.duration}</span></div>
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Duration:</span>
+                              <span>{selectedProject.duration}</span>
+                            </div>
                           )}
-                          <div className="flex justify-between"><span className="text-muted-foreground">Team Size:</span><span>{selectedProject.team ?? 1} members</span></div>
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Team Size:</span>
+                            <span>{selectedProject.team ?? 1} members</span>
+                          </div>
                           {selectedProject.date && (
-                            <div className="flex justify-between"><span className="text-muted-foreground">Date:</span><span>{selectedProject.date}</span></div>
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Date:</span>
+                              <span>{selectedProject.date}</span>
+                            </div>
                           )}
                           {selectedProject.category && (
-                            <div className="flex justify-between"><span className="text-muted-foreground">Category:</span><span className="capitalize">{normalizeCategory(selectedProject.category)}</span></div>
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Category:</span>
+                              <span className="capitalize">{normalizeCategory(selectedProject.category)}</span>
+                            </div>
                           )}
                         </div>
                       </Card>
 
-                      {Array.isArray(selectedProject.tech) && selectedProject.tech.length > 0 && (
+                      {!!selectedProject.tech?.length && (
                         <div>
                           <h4 className="font-semibold mb-3">Technologies Used</h4>
                           <div className="flex flex-wrap gap-1">
