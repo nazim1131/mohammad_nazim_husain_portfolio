@@ -408,7 +408,6 @@
 // export default Projects;
 
 
-// src/pages/Projects.tsx
 import { useState, useEffect, useMemo } from "react";
 import { supabase } from "@/lib/supabase";
 import { motion, AnimatePresence } from "framer-motion";
@@ -423,38 +422,63 @@ import { ExternalLink, Github, Eye, Calendar, Users, Star } from "lucide-react";
 const toArray = (v: any): string[] =>
   Array.isArray(v) ? v : typeof v === "string" ? v.split(",").map(s => s.trim()).filter(Boolean) : [];
 
-// badge by status
+// status → badge classes
 const getStatusBadge = (status: string) =>
   status === "in-progress" ? "bg-warning/20 text-warning" :
-  status === "completed" ? "bg-success/20 text-success" :
-  "bg-muted/20 text-muted-foreground";
+  status === "completed"  ? "bg-success/20 text-success"  :
+                            "bg-muted/20 text-muted-foreground";
 
-// fix category text coming from DB → canonical ids we filter on
-const normalizeCategory = (raw: any): string => {
+// Category normalize: DB/UI में कुछ भी लिखा हो, canonical id में map कर दो
+const normalizeCategory = (raw: any): "fullstack" | "frontend" | "design" | "ai" | "dataanalysis" => {
   const s = String(raw || "").toLowerCase().trim();
-  if (["fullstack", "frontend", "backend", "mobile", "design", "ai", "dataanalysis", "blockchain", "iot"].includes(s)) return s;
-  if (s.includes("design")) return "design";
-  if (s.includes("ai") || s.includes("ml")) return "ai";
-  if (s.includes("data")) return "dataanalysis";
-  if (s.includes("front")) return "frontend";
+
+  // exact matches
+  if (["fullstack", "frontend", "design", "ai", "dataanalysis"].includes(s)) return s as any;
+
+  // common variants / synonyms
   if (s.includes("full")) return "fullstack";
+  if (s.includes("front")) return "frontend";
+  if (s.includes("design")) return "design";            // design / designs
+  if (s.includes("ai") || s.includes("ml")) return "ai"; // ai & ml / ai/ml
+  if (s.includes("data")) return "dataanalysis";         // data analysis / data-analytics
+
+  // default
   return "fullstack";
 };
 
-// convert Google Drive share links to direct-view image links
-const toDisplayImage = (u?: string): string => {
-  const fallback = "/api/placeholder/600/400";
-  if (!u) return fallback;
+// Paste-anywhere image URL → loadable URL (Drive/Dropbox handled)
+const toDisplayImage = (raw?: string): string => {
+  const Fallback = "/api/placeholder/800/450";
+  const u = (raw || "").trim();
+  if (!u) return Fallback;
+
+  const withProto = u.startsWith("http") ? u : `https://${u}`;
+
   try {
-    const url = new URL(u);
+    const url = new URL(withProto);
+
+    // ---- Google Drive formats ----
+    // /file/d/<ID>/view ...
+    // ?id=<ID> ...
+    // /uc?export=download&id=<ID>
     if (url.hostname.includes("drive.google.com")) {
-      const m = u.match(/\/d\/([^/]+)/) || u.match(/[?&]id=([^&]+)/);
+      let m = withProto.match(/\/d\/([^/]+)/);
+      if (!m) m = withProto.match(/[?&]id=([^&]+)/);
       const id = m?.[1];
       if (id) return `https://drive.google.com/uc?export=view&id=${id}`;
     }
-    return u;
+
+    // ---- Dropbox share → direct ----
+    // https://www.dropbox.com/s/<id>/image.png?dl=0  →  dl=1
+    if (url.hostname.includes("dropbox.com")) {
+      url.searchParams.set("dl", "1");
+      return url.toString();
+    }
+
+    // already a direct/normal image url
+    return withProto;
   } catch {
-    return u || fallback;
+    return withProto || Fallback;
   }
 };
 
@@ -464,7 +488,7 @@ const normalizeDbProject = (p: any) => ({
   title: p.title,
   description: p.description,
   longDescription: p.longDescription || p.description || "",
-  image: toDisplayImage(p.image_url) || "/api/placeholder/600/400",
+  image: toDisplayImage(p.image_url) || "/api/placeholder/800/450",
   tech: toArray(p.tags),
   category: normalizeCategory(p.category),
   status: p.status === "published" ? "completed" : (p.status || "completed"),
@@ -476,16 +500,16 @@ const normalizeDbProject = (p: any) => ({
   highlights: Array.isArray(p.highlights) ? p.highlights : toArray(p.highlights),
 });
 
-/* ---------- static fallback (optional) ---------- */
-const staticProjects: any[] = []; // keep empty or your demo items
+/* ---------- optional static fallback ---------- */
+const staticProjects: any[] = [];
 
-/* ---------- filter categories (ids match DB) ---------- */
+/* ---------- filter categories ---------- */
 const CATEGORIES = [
-  { id: "all",        label: "All Projects" },
-  { id: "fullstack",  label: "Full Stack" },
-  { id: "frontend",   label: "Frontend" },
-  { id: "design",     label: "Design" },
-  { id: "ai",         label: "AI & ML" },
+  { id: "all",          label: "All Projects" },
+  { id: "fullstack",    label: "Full Stack" },
+  { id: "frontend",     label: "Frontend" },
+  { id: "design",       label: "Design" },
+  { id: "ai",           label: "AI & ML" },
   { id: "dataanalysis", label: "Data Analysis" },
 ];
 
@@ -514,22 +538,43 @@ const Projects = () => {
   }, [dbProjects]);
 
   const filtered = useMemo(() => {
-    return filter === "all" ? merged : merged.filter(p => normalizeCategory(p.category) === filter);
+    return filter === "all"
+      ? merged
+      : merged.filter((p) => normalizeCategory(p.category) === filter);
   }, [merged, filter]);
 
   return (
     <div className="min-h-screen pt-24 pb-16 px-6">
       <div className="max-w-6xl mx-auto">
         {/* Header */}
-        <motion.div className="text-center mb-16" initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.8 }}>
-          <h1 className="text-4xl md:text-6xl font-bold mb-4">My <span className="text-gradient">Projects</span></h1>
-          <p className="text-xl text-muted-foreground max-w-2xl mx-auto">A showcase of my latest work and technical achievements</p>
+        <motion.div
+          className="text-center mb-16"
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.8 }}
+        >
+          <h1 className="text-4xl md:text-6xl font-bold mb-4">
+            My <span className="text-gradient">Projects</span>
+          </h1>
+          <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
+            A showcase of my latest work and technical achievements
+          </p>
         </motion.div>
 
         {/* Filters */}
-        <motion.div className="flex flex-wrap justify-center gap-3 mb-12" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.8, delay: 0.2 }}>
+        <motion.div
+          className="flex flex-wrap justify-center gap-3 mb-12"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.8, delay: 0.2 }}
+        >
           {CATEGORIES.map((c) => (
-            <Button key={c.id} variant={filter === c.id ? "hero" : "glass"} onClick={() => setFilter(c.id)} className="transition-all duration-200">
+            <Button
+              key={c.id}
+              variant={filter === c.id ? "hero" : "glass"}
+              onClick={() => setFilter(c.id)}
+              className="transition-all duration-200"
+            >
               {c.label}
             </Button>
           ))}
@@ -554,14 +599,13 @@ const Projects = () => {
                   onClick={() => setSelectedProject(project)}
                 >
                   <div className="relative aspect-video bg-muted/10 overflow-hidden">
-                    {/* show the image */}
                     <img
                       src={project.image}
                       alt={project.title}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                       loading="lazy"
                       onError={(e) => {
-                        (e.currentTarget as HTMLImageElement).src = "/api/placeholder/600/400";
+                        (e.currentTarget as HTMLImageElement).src = "/api/placeholder/800/450";
                       }}
                     />
                     <Badge className={`absolute top-3 right-3 ${getStatusBadge(project.status || "completed")}`}>
@@ -571,22 +615,30 @@ const Projects = () => {
 
                   <div className="p-6">
                     <div className="flex items-start justify-between mb-3">
-                      <h3 className="text-xl font-bold group-hover:text-neon transition-colors">{project.title}</h3>
+                      <h3 className="text-xl font-bold group-hover:text-neon transition-colors">
+                        {project.title}
+                      </h3>
                       <div className="flex items-center text-muted-foreground text-sm">
                         <Calendar className="w-4 h-4 mr-1" />
                         {project.date}
                       </div>
                     </div>
 
-                    <p className="text-muted-foreground text-sm mb-4 line-clamp-2">{project.description}</p>
+                    <p className="text-muted-foreground text-sm mb-4 line-clamp-2">
+                      {project.description}
+                    </p>
 
                     {Array.isArray(project.tech) && project.tech.length > 0 && (
                       <div className="flex flex-wrap gap-1 mb-4">
                         {project.tech.slice(0, 3).map((tech: string) => (
-                          <Badge key={tech} variant="secondary" className="text-xs">{tech}</Badge>
+                          <Badge key={tech} variant="secondary" className="text-xs">
+                            {tech}
+                          </Badge>
                         ))}
                         {project.tech.length > 3 && (
-                          <Badge variant="secondary" className="text-xs">+{project.tech.length - 3}</Badge>
+                          <Badge variant="secondary" className="text-xs">
+                            +{project.tech.length - 3}
+                          </Badge>
                         )}
                       </div>
                     )}
@@ -639,7 +691,7 @@ const Projects = () => {
                 </DialogHeader>
 
                 <div className="space-y-6">
-                  {/* screenshot area now actually shows the image */}
+                  {/* screenshot */}
                   <div className="aspect-video bg-muted/10 rounded-lg overflow-hidden">
                     <img
                       src={selectedProject.image}
