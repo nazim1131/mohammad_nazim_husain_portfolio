@@ -55,7 +55,7 @@ const About = () => {
                 <div className="w-32 h-32 rounded-full bg-gradient-primary mb-6 flex items-center justify-center">
                   <span className="text-4xl font-bold text-primary-foreground">
                     {/* MN */}
-                    <img src="../public/WhatsApp Image 2025-10-30 at 15.29.57_528525eb.jpeg" alt="" />
+                    <img src="/profile.jpg" alt="" />
 
                   </span>
                 </div>
