@@ -51,23 +51,14 @@ const About = () => {
             transition={{ duration: 0.8, delay: 0.2 }}
           >
             <Card className="glass hover-lift p-8">
-              {/* <div className="flex flex-col items-center text-center mb-6">
+              <div className="flex flex-col items-center text-center mb-6">
                 <div className="w-32 h-32 rounded-full bg-gradient-primary mb-6 flex items-center justify-center">
                   <span className="text-4xl font-bold text-primary-foreground">
                     MN
                     <img src="/profile.jpg" alt="" className="w-full h-full object-cover" />
 
                   </span>
-                </div> */}
-              <div className="flex flex-col items-center text-center mb-6">
-  <div className="relative w-32 h-32 rounded-full bg-gradient-primary mb-6 overflow-hidden flex items-center justify-center">
-    <img
-      src="/profile.jpg"
-      alt="profile"
-      className="w-full h-full object-cover rounded-full scale-90"
-    />
-  </div>
-</div>
+                </div>
                 <h2 className="text-2xl font-bold mb-2">
                   Mohammad Nazim Husain
                 </h2>
