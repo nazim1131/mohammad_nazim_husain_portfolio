@@ -54,7 +54,9 @@ const About = () => {
               <div className="flex flex-col items-center text-center mb-6">
                 <div className="w-32 h-32 rounded-full bg-gradient-primary mb-6 flex items-center justify-center">
                   <span className="text-4xl font-bold text-primary-foreground">
-                    MN
+                    {/* MN */}
+                    <img src="../public/WhatsApp Image 2025-10-30 at 15.29.57_528525eb.jpeg" alt="" />
+
                   </span>
                 </div>
                 <h2 className="text-2xl font-bold mb-2">
