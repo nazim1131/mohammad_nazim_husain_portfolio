@@ -55,8 +55,6 @@ const About = () => {
                 <div className="w-32 h-32 rounded-full bg-gradient-primary mb-6 flex items-center justify-center">
                   <span className="text-4xl font-bold text-primary-foreground">
                     MN
-                    <img src="/profile.jpg" alt="" className="w-full h-full object-cover" />
-
                   </span>
                 </div>
                 <h2 className="text-2xl font-bold mb-2">
